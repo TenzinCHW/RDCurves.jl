@@ -1,11 +1,3 @@
-import Pkg
-import LinearAlgebra
-import NPZ
-import Statistics
-import ProgressBars
-import ArgParse
-
-
 struct RDresult{F<:AbstractFloat}
     name::String
     βs::Vector{F}
@@ -19,7 +11,7 @@ struct RDresult{F<:AbstractFloat}
 end
 
 
-function run_RD(name::String, p::Vector{F}, d::Matrix{F}, βs::Vector{F}, T::Int) where F<:AbstractFloat
+function run_RD(name::String, p::AbstractVector, d::AbstractMatrix, βs::Vector{F}, T::Int) where F<:AbstractFloat
     CBs = Vector{Matrix{F}}[Matrix{F}[] for _ in 1:Threads.nthreads()]
     Rs = Vector{F}[F[] for _ in 1:Threads.nthreads()]
     Ds = Vector{F}[F[] for _ in 1:Threads.nthreads()]
@@ -71,7 +63,7 @@ function read_RDresult(respath::String)
 end
 
 
-function BA(p::Vector{F} , d::Matrix{F}, β::F, num::Int) where F<:AbstractFloat
+function BA(p::AbstractVector , d::AbstractMatrix, β::F, num::Int) where F<:AbstractFloat
     Q = exp.(-β*d)
     P = LinearAlgebra.I
     for i in 1:num
@@ -91,26 +83,7 @@ function BA(p::Vector{F} , d::Matrix{F}, β::F, num::Int) where F<:AbstractFloat
 end
 
 
-function BAind(p::Vector{F} , d::Matrix{F}, β::F, num::Int) where F<:AbstractFloat
-    Q = exp.(-β*d)
-    P = LinearAlgebra.I
-    for i in 1:num
-        q = P' * p
-        Z = Q * q
-        P = Q .* (1.0 ./ Z * q')
-    end
-    q = P' * p
-    Z = Q * q
-    D = (P .* d)' * p
-    D = sum(D[.!isnan.(D)])
-    tmp = p .* log.(Z)
-    tmp = sum(tmp[.!isnan.(tmp)])
-    R = (-β * D - sum(tmp)) ./ log(2)
-    return P, R, D
-end
-
-
-function newBA(p::Vector{F} , d::Matrix{F}, β::F, num::Int) where F<:AbstractFloat
+function newBA(p::AbstractVector , d::AbstractMatrix, β::F, num::Int) where F<:AbstractFloat
     Q = exp.(-β*d)
     q = rand(size(p)...)
     for i in 1:num
@@ -126,11 +99,11 @@ function newBA(p::Vector{F} , d::Matrix{F}, β::F, num::Int) where F<:AbstractFl
     tmp = p .* log.(Z)
     replace!(x -> isnan(x) ? 0 : x, tmp)
     R = (-β * D - sum(tmp)) ./ log(2)
-    return P, R, D
+    P, R, D
 end
 
 
-function CB_diff(cb1::Matrix{F}, cb2::Matrix{F}) where F<:AbstractFloat
+function CB_diff(cb1::AbstractMatrix, cb2::AbstractMatrix)
     diff = cb1 - cb2
     return Statistics.mean(abs.(diff)) / Statistics.std(diff)
 end
@@ -140,18 +113,23 @@ end
 Every row of the codebook is a conditional distribution, so we can take the KL divergence between subsequent codebooks.
 Not symmetric.
 """
-function CB_diff_KL(cb1::Matrix{F}, cb2::Matrix{F}) where F<:AbstractFloat
-    total = 0
+function CB_diff_KL(cb1::AbstractMatrix, cb2::AbstractMatrix)
+    total = 0.
     for i in 1:size(cb1)[1]
-        #total += sum([p * log((p+10e-7)/(q+10e-7)) for (p, q) in zip(cb1[i, :], cb2[i, :])])
-        total += diff_KL(cb1[i, :], cb2[i, :])
+        cb1v = @view cb1[i, :]
+        cb2v = @view cb2[i, :]
+        total += diff_KL(cb1v, cb2v)
     end
     return total
 end
 
 
-function diff_KL(dist1::Vector{F}, dist2::Vector{F}) where F<:AbstractFloat
-    return sum([p * log((p+10e-10)/(q+10e-10)) for (p, q) in zip(dist1, dist2)])
+function diff_KL(dist1::AbstractVector, dist2::AbstractVector)
+    eps = floatmin(Float32)
+    adj_dist1 = dist1[:]
+    adj_dist1[adj_dist1 .== 0] .= eps
+    dist2[dist2 .== 0] .= eps
+    sum(dist1 .* log.(adj_dist1 ./ dist2))
 end
 
 
@@ -184,7 +162,7 @@ function nearest_val_index(val, values)
 end
 
 
-function get_possible_peaks(x, y; step_size=0.005, momentum=0.3, grad_thresh=1e-3) # Do not set momentum too high or you may land out of bounds
+function get_possible_peaks(x::AbstractVector, y::AbstractVector; step_size=0.005, momentum=0.3, grad_thresh=1e-3) # Do not set momentum too high or you may land out of bounds
     y_prime = (y[2:end] .- y[1:end-1]) #./ (x[2:end] .- x[1:end-1])
     y_prime[abs.(y_prime) .< grad_thresh] .= 0
     sign_y_prime = sign.(y_prime)

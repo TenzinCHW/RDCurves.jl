@@ -1,5 +1,3 @@
-include("BA.jl")
-import LinearAlgebra
 import CUDA
 
 
