@@ -324,7 +324,7 @@ if abspath(PROGRAM_FILE) == @__FILE__
     Ds = []
     res = run_RD("test", p, d, βs, T)
     for β in βs
-        q, r, ds = oldBA(p, d, β, T)
+        q, r, ds = BA(p, d, β, T)
         append!(Ps, q)
         append!(Rs, r)
         append!(Ds, ds)
